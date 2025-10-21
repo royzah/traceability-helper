@@ -1,0 +1,25 @@
+
+name: branch-name-check
+
+on:
+  push:
+    branches-ignore: ["main", "master"]
+  pull_request:
+
+jobs:
+  validate-branch-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Validate branch name contains Jira key
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          JIRA_PROJECT_REGEX: "SECO-[0-9]+"
+        run: |
+          echo "Branch: ${GITHUB_REF_NAME}"
+          if [[ ! "${GITHUB_REF_NAME}" =~ ${JIRA_PROJECT_REGEX} ]]; then
+            echo "::error title=Invalid branch name::Must include a Jira key like SECO-1234"
+            exit 1
+          fi

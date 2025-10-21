@@ -1,0 +1,29 @@
+
+name: pr-jira-sync
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed, ready_for_review]
+
+jobs:
+  sync-jira:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install -r tools/requirements.txt
+      - name: Run Jira sync
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: ${{ secrets.JIRA_PROJECT_KEY }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: python tools/jira_sync.py

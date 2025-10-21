@@ -1,0 +1,30 @@
+
+name: commit-message-check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+jobs:
+  validate-commit-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate commit subjects
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          COMMIT_REGEX: "^\[[A-Z]+-[0-9]+\]"
+        run: |
+          COMMITS=$(git log --pretty=format:%s ${PR_BASE}..${PR_HEAD})
+          FAIL=0
+          while IFS= read -r subject; do
+            if [[ ! "${subject}" =~ ${COMMIT_REGEX} ]]; then
+              echo "::error title=Commit missing Jira tag::'${subject}'"
+              FAIL=1
+            fi
+          done <<< "${COMMITS}"
+          exit ${FAIL}

@@ -1,0 +1,44 @@
+
+#!/usr/bin/env bash
+# Inject [SECO-XXXX] into commit subject based on branch name.
+# Works on conventional commits too: "[SECO-1] feat: add thing"
+
+set -euo pipefail
+
+MSG_FILE="$1"
+BRANCH_NAME="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+
+if [[ -z "${BRANCH_NAME}" ]]; then
+  exit 0
+fi
+
+# Accept both the team's SECO prefix and potential future projects if needed.
+# Default is SECO-####, but allow uppercase letters + digits.
+if [[ "${BRANCH_NAME}" =~ ([A-Z]+-[0-9]+) ]]; then
+  ISSUE="${BASH_REMATCH[1]}"
+else
+  exit 0
+fi
+
+# If the message already starts with [ISSUE], do nothing.
+FIRST_LINE="$(head -n1 "${MSG_FILE}")"
+if [[ "${FIRST_LINE}" =~ ^\\[${ISSUE}\\] ]]; then
+  exit 0
+fi
+
+# If the message starts with [OTHER-123], leave it (multi-project repos).
+if [[ "${FIRST_LINE}" =~ ^\\[[A-Z]+-[0-9]+\\] ]]; then
+  exit 0
+fi
+
+# Otherwise, prefix the subject line with [ISSUE]
+# Keep body intact.
+tmp="$(mktemp)"
+{
+  # Prefix subject
+  echo "[${ISSUE}] ${FIRST_LINE}"
+  # Append the remainder (if any)
+  tail -n +2 "${MSG_FILE}" || true
+} > "${tmp}"
+
+mv "${tmp}" "${MSG_FILE}"
