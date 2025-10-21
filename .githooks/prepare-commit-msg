@@ -1,44 +1,52 @@
-
 #!/usr/bin/env bash
-# Inject [SECO-XXXX] into commit subject based on branch name.
-# Works on conventional commits too: "[SECO-1] feat: add thing"
+# Automatically inject [PROJECT-ID] into commit messages based on branch name
+# Supports multiple Jira projects dynamically
 
 set -euo pipefail
 
 MSG_FILE="$1"
+COMMIT_SOURCE="${2:-}"
+SHA="${3:-}"
+
+# Skip during merge/rebase operations
+if [[ "${COMMIT_SOURCE}" == "merge" ]] || [[ "${COMMIT_SOURCE}" == "squash" ]]; then
+    exit 0
+fi
+
+# Get current branch name
 BRANCH_NAME="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
 
 if [[ -z "${BRANCH_NAME}" ]]; then
-  exit 0
+    exit 0
 fi
 
-# Accept both the team's SECO prefix and potential future projects if needed.
-# Default is SECO-####, but allow uppercase letters + digits.
-if [[ "${BRANCH_NAME}" =~ ([A-Z]+-[0-9]+) ]]; then
-  ISSUE="${BASH_REMATCH[1]}"
+# Extract any Jira-like project key from branch name
+# Matches any uppercase letters followed by dash and numbers
+if [[ "${BRANCH_NAME}" =~ ([A-Z][A-Z0-9]{1,9}-[0-9]+) ]]; then
+    ISSUE_KEY="${BASH_REMATCH[1]}"
 else
-  exit 0
+    exit 0
 fi
 
-# If the message already starts with [ISSUE], do nothing.
+# Read the first line of the commit message
 FIRST_LINE="$(head -n1 "${MSG_FILE}")"
-if [[ "${FIRST_LINE}" =~ ^\\[${ISSUE}\\] ]]; then
-  exit 0
+
+# Check if message already contains this issue key
+if [[ "${FIRST_LINE}" =~ ^\[${ISSUE_KEY}\] ]]; then
+    exit 0
 fi
 
-# If the message starts with [OTHER-123], leave it (multi-project repos).
-if [[ "${FIRST_LINE}" =~ ^\\[[A-Z]+-[0-9]+\\] ]]; then
-  exit 0
+# Check if message already contains any issue key
+if [[ "${FIRST_LINE}" =~ ^\[[A-Z][A-Z0-9]{1,9}-[0-9]+\] ]]; then
+    # Different key already present, respect it
+    exit 0
 fi
 
-# Otherwise, prefix the subject line with [ISSUE]
-# Keep body intact.
-tmp="$(mktemp)"
+# Inject the issue key
+TEMP_FILE="$(mktemp)"
 {
-  # Prefix subject
-  echo "[${ISSUE}] ${FIRST_LINE}"
-  # Append the remainder (if any)
-  tail -n +2 "${MSG_FILE}" || true
-} > "${tmp}"
+    echo "[${ISSUE_KEY}] ${FIRST_LINE}"
+    tail -n +2 "${MSG_FILE}" 2>/dev/null || true
+} > "${TEMP_FILE}"
 
-mv "${tmp}" "${MSG_FILE}"
+mv "${TEMP_FILE}" "${MSG_FILE}"

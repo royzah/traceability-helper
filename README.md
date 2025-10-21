@@ -1,93 +1,237 @@
+# Jira-GitHub Traceability Framework
 
-# SECO Traceability Helper (Jira ↔ GitHub)
+Automated bidirectional traceability between GitHub and Jira with zero developer overhead.
 
-**Developer‑centric traceability**: zero manual toil, full audit.  
-This repo provides hooks, CI checks, and a sync action so that **every commit/PR** is automatically linked to a Jira issue (project key: `SECO`), with clean reporting.
+## Overview
 
-> Guiding principle: *Blend automation + lightweight governance* — keep traceability and visibility without breaking flow.
+This framework enforces that every commit and pull request is linked to a Jira issue through automation, providing complete traceability without impacting developer workflow. The system automatically:
 
-## What you get
-- **Hooks**: auto‑inject `[SECO-XXXX]` from branch name into commit messages.
-- **Branch/Commit CI checks**: enforce `SECO-\d+` in branch names and commits.
-- **Jira Sync GitHub Action**: on PR open/sync/merge, link PR and transition the issue.
-- **Metrics exporter**: emit JSON/CSV for cycle time and review latency to feed dashboards.
+- Injects Jira issue keys into commit messages
+- Validates branch names and commits via CI
+- Creates bidirectional links between PRs and Jira issues
+- Transitions issues through workflow states
+- Provides audit trails and compliance reporting
 
----
+## Key Features
+
+### Developer Experience
+
+- **Zero Manual Effort**: Jira IDs automatically injected from branch names
+- **No Forms or Tickets**: Traceability data extracted from existing Git workflow
+- **Smart Validation**: CI checks prevent missing references before merge
+- **Multi-Project Support**: Works across all Jira projects in your organization
+
+### Compliance & Governance
+
+- **100% Coverage**: Every commit traced to a business requirement
+- **Audit Ready**: Complete linkage for compliance reviews
+- **Automated Transitions**: Issues move through workflow without manual updates
+- **Real-time Sync**: Jira reflects PR status immediately
+
+### Technical Architecture
+
+- **GitHub Actions Based**: No external dependencies or services
+- **API-First Integration**: Direct Jira REST API integration
+- **Configurable Workflows**: Adapt to your specific Jira workflow
+- **Enterprise Ready**: Supports Jira Cloud and Data Center
 
 ## Quick Start
 
-### 0) Prereqs
-- Git 2.30+
-- Python 3.10+ on CI (Actions runner) and locally (optional)
-- A Jira Cloud (or DC) project with key **`SECO`**
-- A Jira API token (Cloud) or PAT (DC) with permission to edit issues
+### Prerequisites
 
-### 1) Configure repo secrets (GitHub → Settings → Secrets and variables → Actions)
-- `JIRA_BASE_URL` — e.g. `https://yourcompany.atlassian.net`
-- `JIRA_USER_EMAIL` — your Jira user email for the API token
-- `JIRA_API_TOKEN` — API token (Cloud) or PAT (DC)
-- `JIRA_PROJECT_KEY` — set to `SECO`
-- (Optional) `JIRA_TRANSITION_IN_REVIEW`, `JIRA_TRANSITION_DONE` — transition IDs or names
+- GitHub repository with Actions enabled
+- Jira instance (Cloud or Data Center)
+- Admin access to configure repository secrets
 
-### 2) Install Git hooks (for all devs)
+### Installation
+
+1. **Copy Framework Files**
+
+   ```bash
+   git clone https://github.com/royzah/traceability-helper
+   cp -r traceability-helper/.githooks your-repo/
+   cp -r traceability-helper/.github your-repo/
+   cp -r traceability-helper/tools your-repo/
+   cp -r traceability-helper/scripts your-repo/
+   ```
+
+2. **Configure Project Keys**
+   Edit `.github/workflows/jira-traceability.yml`:
+
+   ```yaml
+   env:
+     JIRA_PROJECT_KEYS: "YOUR_KEYS_HERE" # e.g., "SECO,DEVOPS,ACCREQ"
+   ```
+
+3. **Set Repository Secrets**
+   Go to Settings → Secrets and variables → Actions:
+
+   - `JIRA_BASE_URL`
+   - `JIRA_USER_EMAIL`
+   - `JIRA_API_TOKEN`
+   - `JIRA_TRANSITION_IN_REVIEW` (optional)
+   - `JIRA_TRANSITION_DONE` (optional)
+
+4. **Enable for Developers**
+
+   ```bash
+   ./scripts/install-hooks.sh
+   ```
+
+## Usage
+
+### Branch Naming
+
+Include the Jira issue key anywhere in the branch name:
+
+- `feature/SECO-1234-add-authentication`
+- `DEVOPS-89-fix-pipeline`
+- `hotfix/urgent-ACCREQ-456`
+
+### Commit Messages
+
+The hook automatically adds `[PROJECT-ID]` to commits:
+
 ```bash
-# one-time per clone
-scripts/install-hooks.sh
+# You write:
+git commit -m "Add user authentication"
+
+# Git commits:
+[SECO-1234] Add user authentication
 ```
-This sets `core.hooksPath=.githooks` and installs **prepare-commit-msg** so commit subjects get `[SECO-1234]` injected from the current branch name (e.g. `feature/SECO-1234-improve-nats`).
 
-### 3) Use the branch naming convention
-- Branch must contain the Jira key: `SECO-1234`
-  - Examples: `feature/SECO-1234-telemetry`, `hotfix/SECO-9-null-deref`
+### Pull Request Flow
 
-> CI will block PRs if the branch name or commits don’t include a Jira key.
+1. Create PR from branch with Jira key
+2. CI validates branch and all commits
+3. Jira issue automatically linked
+4. Status transitions on PR events:
+   - Open/Ready → "In Review"
+   - Merged → "Done"
 
-### 4) Open a PR
-- The workflow **links PR → Jira issue**, adds remote links and (optionally) transitions the issue (e.g. “In Review”, “Done”).
+## Configuration
 
----
+### Workflow Transitions
 
-## How it works
+Find your Jira transition IDs:
 
-### Hooks
-- `.githooks/prepare-commit-msg` finds `SECO-\d+` in the **branch name** and prefixes commit subjects with `[SECO-XXXX]`.
-- The hook is idempotent and won’t duplicate the tag if present already.
+```bash
+curl -u email:token \
+  https://your-jira.atlassian.net/rest/api/3/issue/SECO-1234/transitions
+```
+
+Set in GitHub Secrets:
+
+- `JIRA_TRANSITION_IN_REVIEW`: Name or ID
+- `JIRA_TRANSITION_DONE`: Name or ID
+
+### Multiple Projects
+
+Support multiple Jira projects by updating the workflow:
+
+```yaml
+JIRA_PROJECT_KEYS: "SECO,DEVOPS,ACCREQ,FMO,KMS"
+```
+
+### Branch Protection
+
+Enforce via Settings → Branches:
+
+- Require status checks: `validate-branch-name`, `validate-commits`
+- Include administrators (recommended)
+
+## Architecture
+
+```text
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│   Developer │────▶│  Git Hooks   │────▶│   GitHub    │
+│   Commits   │     │  Auto-inject │     │     Repo    │
+└─────────────┘     └──────────────┘     └──────┬──────┘
+                                                │
+                                                ▼
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│    Jira     │◀────│GitHub Actions│◀────│  Pull       │
+│    Issue    │     │  Validation  │     │  Request    │
+└─────────────┘     │  & Sync      │     └─────────────┘
+                    └──────────────┘
+```
+
+## Validation Rules
+
+### Branch Names
+
+- Must contain: `[A-Z]{2,10}-[0-9]+`
+- Valid: `feature/SECO-123`, `DEVOPS-45-fix`
+- Invalid: `feature/new-login`, `main`
+
+### Commit Message Format
+
+- Must start with: `[PROJECT-ID]`
+- Valid: `[SECO-123] Add feature`
+- Invalid: `Add feature`
 
 ### CI Checks
-- **Branch name** validator (push/PR): must include `SECO-\d+`.
-- **Commit messages** validator (PR): every commit subject must start with `[SECO-XXXX]`.
 
-### Jira Sync
-- On PR events we parse the Jira key from the branch/PR title/commits.
-- We create/update a *remote link* on the Jira issue to the PR; optionally transition state.
-- We add PR metadata as a comment (commit count, reviewers, merge SHA).
+- **Branch validation**: On push and PR
+- **Commit validation**: On PR only
+- **Jira sync**: On PR events
 
-### Metrics
-- `dashboard/export_metrics.py` pulls PR data and writes **JSON/CSV** for lead time, review latency, and merged-throughput.
-- Feed this to Grafana/Metabase or a simple Confluence chart.
+## Troubleshooting
 
----
+### Common Issues
 
-## Local config (optional)
-Copy `tools/config.example.yaml` to `tools/config.yaml` for local scripts.
+#### Hooks not working
 
----
+```bash
+git config core.hooksPath  # Should output: .githooks
+./scripts/install-hooks.sh  # Reinstall
+```
 
-## FAQ
+#### Jira sync failures
 
-**Q: What if a dev starts coding before creating a Jira ticket?**  
-A: It’s fine — once a branch gets named `SECO-XXXX`, everything links automatically. If the branch was created before the ticket existed, just rename the branch (Git supports this) and amend the last commit for consistency.
+- Check Actions logs for specific errors
+- Verify API token permissions
+- Ensure issue exists and is accessible
 
-**Q: Can we support multiple projects?**  
-A: Yes. Set `JIRA_PROJECT_KEY` to a regex like `(SECO|OPS)` and update CI env vars.
+#### Transition not available
 
-**Q: What about squashed merges?**  
-A: The PR sync uses the branch and PR title; the Jira link still works regardless of squash vs merge commits.
+- Issue may be in wrong status
+- Check workflow configuration in Jira
+- Use numeric IDs instead of names
 
-**Q: Self-hosted Jira Data Center?**  
-A: Works the same; use PAT and REST endpoints accordingly.
+### Debug Commands
 
----
+Test Jira connectivity:
 
-## License
-MIT
+```bash
+curl -u email:token \
+  https://our-jira.atlassian.net/rest/api/3/myself
+```
+
+Verify issue access:
+
+```bash
+curl -u email:token \
+  https://our-jira.atlassian.net/rest/api/3/issue/SECO-1234
+```
+
+## Security Considerations
+
+- API tokens stored in GitHub Secrets (encrypted)
+- Minimal Jira permissions required (read/write issues)
+- No sensitive data in repository
+- Actions run in isolated environments
+
+## Support Matrix
+
+| Component        | Version |
+| ---------------- | ------- |
+| Git              | 2.30+   |
+| GitHub Actions   | Latest  |
+| Python           | 3.10+   |
+| Jira Cloud       | Latest  |
+| Jira Data Center | 8.0+    |
+
+## Contributing
+
+See [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for detailed setup instructions.

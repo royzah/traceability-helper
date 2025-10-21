@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Validate that commit messages contain a Jira issue key
+# This is a safety net in case prepare-commit-msg fails
+
+set -euo pipefail
+
+MSG_FILE="$1"
+FIRST_LINE="$(head -n1 "${MSG_FILE}")"
+
+# Check for Jira key pattern at the start of the message
+if [[ ! "${FIRST_LINE}" =~ ^\[[A-Z][A-Z0-9]{1,9}-[0-9]+\] ]]; then
+    echo "ERROR: Commit message must start with [PROJECT-ID]" >&2
+    echo "Example: [SECO-1234] Your commit message" >&2
+    echo "" >&2
+    echo "Your current branch should contain a Jira issue key." >&2
+    echo "Branch examples: feature/SECO-1234-description, DEVOPS-89-fix" >&2
+    exit 1
+fi
+
+# Validate commit message length (optional but recommended)
+MSG_LENGTH="${#FIRST_LINE}"
+if [[ ${MSG_LENGTH} -gt 100 ]]; then
+    echo "WARNING: Commit subject line is ${MSG_LENGTH} characters (recommended: <100)" >&2
+fi
+
+exit 0

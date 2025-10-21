@@ -1,0 +1,117 @@
+name: Jira Traceability
+
+on:
+    push:
+        branches-ignore: [main, master, develop]
+    pull_request:
+        types: [opened, synchronize, reopened, closed, ready_for_review, edited]
+
+env:
+    # Configure your valid Jira project keys here
+    JIRA_PROJECT_KEYS: "SECO,DEVOPS,ACCREQ,ATRC,DOH,DTHREAT,FMO,KMS,PKVM,PTAD,RTA,SEC,LABS"
+    JIRA_KEY_PATTERN: "[A-Z][A-Z0-9]{1,9}-[0-9]+"
+
+jobs:
+    validate-branch-name:
+        name: Validate Branch Name
+        runs-on: ubuntu-latest
+        if: github.event_name == 'push' || github.event_name == 'pull_request'
+        steps:
+            - name: Check branch name contains Jira key
+              run: |
+                  BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+                  echo "Checking branch: ${BRANCH}"
+
+                  if [[ ! "${BRANCH}" =~ ${JIRA_KEY_PATTERN} ]]; then
+                    echo "::error title=Invalid Branch Name::Branch must contain a Jira issue key (e.g., SECO-1234)"
+                    echo "Valid project keys: ${JIRA_PROJECT_KEYS}"
+                    exit 1
+                  fi
+
+                  # Extract the key
+                  if [[ "${BRANCH}" =~ (${JIRA_KEY_PATTERN}) ]]; then
+                    KEY="${BASH_REMATCH[1]}"
+                    PROJECT="${KEY%%-*}"
+                    
+                    # Validate against allowed projects
+                    if [[ ! ",${JIRA_PROJECT_KEYS}," =~ ",${PROJECT}," ]]; then
+                      echo "::error title=Invalid Project Key::Project '${PROJECT}' is not configured for this repository"
+                      echo "Valid project keys: ${JIRA_PROJECT_KEYS}"
+                      exit 1
+                    fi
+                    
+                    echo "✓ Valid Jira key found: ${KEY}"
+                  fi
+
+    validate-commits:
+        name: Validate Commit Messages
+        runs-on: ubuntu-latest
+        if: github.event_name == 'pull_request'
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Validate all commit messages
+              run: |
+                  BASE="${{ github.event.pull_request.base.sha }}"
+                  HEAD="${{ github.event.pull_request.head.sha }}"
+
+                  echo "Validating commits between ${BASE} and ${HEAD}"
+
+                  INVALID_COMMITS=""
+                  while IFS= read -r commit; do
+                    SHA=$(echo "${commit}" | cut -d' ' -f1)
+                    MSG=$(echo "${commit}" | cut -d' ' -f2-)
+                    
+                    if [[ ! "${MSG}" =~ ^\[${JIRA_KEY_PATTERN}\] ]]; then
+                      INVALID_COMMITS="${INVALID_COMMITS}\n  - ${SHA:0:7}: ${MSG}"
+                    fi
+                  done < <(git log --pretty=format:"%H %s" "${BASE}..${HEAD}")
+
+                  if [[ -n "${INVALID_COMMITS}" ]]; then
+                    echo "::error title=Invalid Commit Messages::The following commits are missing Jira keys:"
+                    echo -e "${INVALID_COMMITS}"
+                    echo ""
+                    echo "All commits must start with [PROJECT-ID], e.g., [SECO-1234]"
+                    echo "Run './scripts/install-hooks.sh' locally to enable automatic injection"
+                    exit 1
+                  fi
+
+                  echo "✓ All commits have valid Jira references"
+
+    sync-with-jira:
+        name: Sync with Jira
+        runs-on: ubuntu-latest
+        if: |
+            github.event_name == 'pull_request' &&
+            (github.event.action == 'opened' ||
+             github.event.action == 'synchronize' ||
+             github.event.action == 'reopened' ||
+             github.event.action == 'closed' ||
+             github.event.action == 'ready_for_review')
+        permissions:
+            contents: read
+            pull-requests: read
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Install dependencies
+              run: |
+                  pip install --no-cache-dir requests pyyaml
+
+            - name: Sync PR with Jira
+              env:
+                  JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+                  JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+                  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+                  JIRA_TRANSITION_IN_REVIEW: ${{ secrets.JIRA_TRANSITION_IN_REVIEW }}
+                  JIRA_TRANSITION_DONE: ${{ secrets.JIRA_TRANSITION_DONE }}
+                  GITHUB_EVENT_PATH: ${{ github.event_path }}
+                  JIRA_PROJECT_KEYS: ${{ env.JIRA_PROJECT_KEYS }}
+              run: python tools/jira_sync.py

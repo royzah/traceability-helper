@@ -1,0 +1,67 @@
+# Jira-GitHub Integration Configuration
+# This file is for local development/testing only
+# Production values should be set in GitHub Secrets
+
+jira:
+  # Your Jira instance URL
+  base_url: "https://your-company.atlassian.net"
+
+  # Authentication credentials
+  user_email: "automation@company.com"
+  api_token: "CHANGE_ME" # Get from: https://id.atlassian.com/manage/api-tokens
+
+  # Valid project keys for this repository
+  # Add/remove based on your needs
+  project_keys:
+    - SECO
+    - DEVOPS
+    - ACCREQ
+    - ATRC
+    - DOH
+    - DTHREAT
+    - FMO
+    - KMS
+    - PKVM
+    - PTAD
+    - RTA
+    - SEC
+    - LABS
+    - SYSTESTAD
+
+transitions:
+  # Jira workflow transitions (use names or IDs)
+  # Find IDs via: GET /rest/api/3/issue/{issueKey}/transitions
+
+  # Transition when PR is opened/ready for review
+  in_review:
+    name: "In Review"
+    id: 21 # Optional: use ID for better reliability
+
+  # Transition when PR is merged
+  done:
+    name: "Done"
+    id: 31
+
+  # Additional transitions (optional)
+  in_progress:
+    name: "In Progress"
+    id: 11
+
+  blocked:
+    name: "Blocked"
+    id: 41
+
+# Advanced settings
+settings:
+  # Skip sync for draft PRs
+  skip_draft_prs: false
+
+  # Add labels to PR based on Jira issue type
+  add_pr_labels: true
+
+  # Comment format
+  comment_format: "simple" # Options: simple, detailed, markdown
+
+  # Retry configuration
+  max_retries: 3
+  retry_delay: 2 # seconds

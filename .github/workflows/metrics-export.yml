@@ -1,0 +1,61 @@
+name: Export Metrics
+
+on:
+    schedule:
+        # Daily at 2 AM UTC
+        - cron: "0 2 * * *"
+    workflow_dispatch:
+        inputs:
+            days_back:
+                description: "Number of days to analyze"
+                required: false
+                default: "30"
+
+jobs:
+    export-metrics:
+        name: Export Jira-GitHub Metrics
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: read
+            issues: read
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+
+            - name: Install dependencies
+              run: |
+                  pip install requests pyyaml pandas
+
+            - name: Collect PR metrics
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+                  JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+                  JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+                  DAYS_BACK: ${{ github.event.inputs.days_back || '30' }}
+              run: |
+                  python tools/export_metrics.py
+
+            - name: Upload metrics artifacts
+              uses: actions/upload-artifact@v4
+              with:
+                  name: jira-github-metrics-${{ github.run_id }}
+                  path: |
+                      metrics/*.json
+                      metrics/*.csv
+                  retention-days: 90
+
+            - name: Post metrics summary
+              if: always()
+              run: |
+                  if [ -f metrics/summary.json ]; then
+                    echo "## Metrics Summary" >> $GITHUB_STEP_SUMMARY
+                    echo "" >> $GITHUB_STEP_SUMMARY
+                    cat metrics/summary.json | python -m json.tool >> $GITHUB_STEP_SUMMARY
+                  fi
