@@ -1,237 +1,159 @@
-# Jira-GitHub Traceability Framework
+# Traceability Helper
 
-Automated bidirectional traceability between GitHub and Jira with zero developer overhead.
+Link every change to its tracker issue with zero developer overhead, across many
+repos. Host-agnostic (GitHub, GitLab, Bitbucket), tracker-agnostic (Jira and
+alternatives).
 
-## Overview
+The issue key is the single thread: a hook injects it from the branch, CI
+enforces it, and a provider links the change to the issue and moves it through
+review and done. Process and conventions: [WORKFLOW.md](WORKFLOW.md).
 
-This framework enforces that every commit and pull request is linked to a Jira issue through automation, providing complete traceability without impacting developer workflow. The system automatically:
+## What it does
 
-- Injects Jira issue keys into commit messages
-- Validates branch names and commits via CI
-- Creates bidirectional links between PRs and Jira issues
-- Transitions issues through workflow states
-- Provides audit trails and compliance reporting
+- Injects the key into commits from the branch name (Conventional-Commits safe).
+- Fails CI on a branch or commit that has no key.
+- Links the change to the issue, comments, and transitions state on PR events.
+- Reports traceability coverage across merged changes.
+- Ships ready to drop into GitHub, GitLab, or Bitbucket.
 
-## Key Features
+## Flow
 
-### Developer Experience
+```mermaid
+flowchart LR
+  dev[Branch feat/SECO-1234-x] --> hook[prepare-commit-msg adds key]
+  hook --> pr[Pull or merge request]
+  pr --> ci[CI: validate + sync]
+  ci --> issue[(Tracker issue)]
+```
 
-- **Zero Manual Effort**: Jira IDs automatically injected from branch names
-- **No Forms or Tickets**: Traceability data extracted from existing Git workflow
-- **Smart Validation**: CI checks prevent missing references before merge
-- **Multi-Project Support**: Works across all Jira projects in your organization
+## Code hosts
 
-### Compliance & Governance
+Same tool, different CI wiring. Keys come from the branch (and the request title
+and body where the host exposes them).
 
-- **100% Coverage**: Every commit traced to a business requirement
-- **Audit Ready**: Complete linkage for compliance reviews
-- **Automated Transitions**: Issues move through workflow without manual updates
-- **Real-time Sync**: Jira reflects PR status immediately
+| host      | wiring                      | template                      |
+| --------- | --------------------------- | ----------------------------- |
+| GitHub    | reusable workflow (`uses:`) | [examples/](examples)         |
+| GitLab    | `include:` a CI template    | [ci/gitlab/](ci/gitlab)       |
+| Bitbucket | merge a pipelines snippet   | [ci/bitbucket/](ci/bitbucket) |
 
-### Technical Architecture
+## Trackers
 
-- **GitHub Actions Based**: No external dependencies or services
-- **API-First Integration**: Direct Jira REST API integration
-- **Configurable Workflows**: Adapt to your specific Jira workflow
-- **Enterprise Ready**: Supports Jira Cloud and Data Center
+Set `provider`. Keys come from the branch, title, or body.
 
-## Quick Start
+| provider   | key shape  | links via            | transitions via        |
+| ---------- | ---------- | -------------------- | ---------------------- |
+| `jira`     | `PROJ-123` | remote link          | named/id transition    |
+| `github`   | `#123`     | native cross-ref     | close issue / label    |
+| `linear`   | `ENG-123`  | attachment           | workflow state by name |
+| `youtrack` | `PROJ-123` | comment (native VCS) | `State <name>` command |
+| `azure`    | `AB#123`   | hyperlink relation   | `System.State`         |
+| `trello`   | card link  | URL attachment       | move card to a list    |
 
-### Prerequisites
+Jira supports Cloud (REST v3) and Data Center (REST v2, bearer PAT).
 
-- GitHub repository with Actions enabled
-- Jira instance (Cloud or Data Center)
-- Admin access to configure repository secrets
+## Use on GitHub
 
-### Installation
-
-1. **Copy Framework Files**
-
-   ```bash
-   git clone https://github.com/royzah/traceability-helper
-   cp -r traceability-helper/.githooks your-repo/
-   cp -r traceability-helper/.github your-repo/
-   cp -r traceability-helper/tools your-repo/
-   cp -r traceability-helper/scripts your-repo/
-   ```
-
-2. **Configure Project Keys**
-   Edit `.github/workflows/jira-traceability.yml`:
+1. Add the caller workflow ([examples/traceability.yml](examples/traceability.yml)):
 
    ```yaml
-   env:
-     JIRA_PROJECT_KEYS: "YOUR_KEYS_HERE" # e.g., "SECO,DEVOPS,ACCREQ"
+   jobs:
+     traceability:
+       uses: royzah/traceability-helper/.github/workflows/traceability.yml@v1
+       with:
+         provider: jira
+         project_keys: "SECO,DEVOPS"
+       secrets: inherit
    ```
 
-3. **Set Repository Secrets**
-   Go to Settings → Secrets and variables → Actions:
+   `secrets: inherit` passes the tracker credentials set at the org or repo
+   level. Pin `@v1` to a released tag.
 
-   - `JIRA_BASE_URL`
-   - `JIRA_USER_EMAIL`
-   - `JIRA_API_TOKEN`
-   - `JIRA_TRANSITION_IN_REVIEW` (optional)
-   - `JIRA_TRANSITION_DONE` (optional)
+2. Enable the hook locally, once after cloning:
 
-4. **Enable for Developers**
-
-   ```bash
+   ```sh
    ./scripts/install-hooks.sh
    ```
 
-## Usage
+## Use on GitLab
 
-### Branch Naming
-
-Include the Jira issue key anywhere in the branch name:
-
-- `feature/SECO-1234-add-authentication`
-- `DEVOPS-89-fix-pipeline`
-- `hotfix/urgent-ACCREQ-456`
-
-### Commit Messages
-
-The hook automatically adds `[PROJECT-ID]` to commits:
-
-```bash
-# You write:
-git commit -m "Add user authentication"
-
-# Git commits:
-[SECO-1234] Add user authentication
-```
-
-### Pull Request Flow
-
-1. Create PR from branch with Jira key
-2. CI validates branch and all commits
-3. Jira issue automatically linked
-4. Status transitions on PR events:
-   - Open/Ready → "In Review"
-   - Merged → "Done"
-
-## Configuration
-
-### Workflow Transitions
-
-Find your Jira transition IDs:
-
-```bash
-curl -u email:token \
-  https://your-jira.atlassian.net/rest/api/3/issue/SECO-1234/transitions
-```
-
-Set in GitHub Secrets:
-
-- `JIRA_TRANSITION_IN_REVIEW`: Name or ID
-- `JIRA_TRANSITION_DONE`: Name or ID
-
-### Multiple Projects
-
-Support multiple Jira projects by updating the workflow:
+Add to `.gitlab-ci.yml` and set the provider secrets as CI/CD variables:
 
 ```yaml
-JIRA_PROJECT_KEYS: "SECO,DEVOPS,ACCREQ,FMO,KMS"
+include:
+  - remote: "https://raw.githubusercontent.com/royzah/traceability-helper/v1/ci/gitlab/traceability.yml"
 ```
 
-### Branch Protection
+## Use on Bitbucket
 
-Enforce via Settings → Branches:
+Merge [ci/bitbucket/pipelines.yml](ci/bitbucket/pipelines.yml) into
+`bitbucket-pipelines.yml` and set the provider secrets as repository variables.
 
-- Require status checks: `validate-branch-name`, `validate-commits`
-- Include administrators (recommended)
+## Required secrets
 
-## Architecture
+Set these as the host's CI secrets (GitHub org/repo secrets, GitLab CI/CD
+variables, Bitbucket repository variables). Only the selected provider's block
+is required.
+
+Jira:
+
+| secret                      | required | notes                         |
+| --------------------------- | -------- | ----------------------------- |
+| `JIRA_BASE_URL`             | yes      | `https://org.atlassian.net`   |
+| `JIRA_API_TOKEN`            | yes      | API token (Cloud) or PAT (DC) |
+| `JIRA_USER_EMAIL`           | basic    | omit when `JIRA_AUTH=bearer`  |
+| `JIRA_API_VERSION`          | no       | `3` Cloud (default), `2` DC   |
+| `JIRA_AUTH`                 | no       | `basic` (default) or `bearer` |
+| `JIRA_TRANSITION_IN_REVIEW` | no       | transition name or id         |
+| `JIRA_TRANSITION_DONE`      | no       | transition name or id         |
+
+Other providers:
+
+- Linear: `LINEAR_API_KEY`, `LINEAR_STATE_IN_REVIEW`, `LINEAR_STATE_DONE`.
+- YouTrack: `YOUTRACK_BASE_URL`, `YOUTRACK_TOKEN`, `YOUTRACK_STATE_IN_REVIEW`,
+  `YOUTRACK_STATE_DONE`.
+- Azure Boards: `AZURE_ORG_URL`, `AZURE_PROJECT`, `AZURE_PAT`,
+  `AZURE_STATE_IN_REVIEW`, `AZURE_STATE_DONE`.
+- Trello: `TRELLO_KEY`, `TRELLO_TOKEN`, `TRELLO_LIST_IN_REVIEW`,
+  `TRELLO_LIST_DONE` (list ids).
+- GitHub Issues: none beyond the built-in token; optional
+  `GITHUB_LABEL_IN_REVIEW`.
+
+Full reference: [tools/config.yaml.example](tools/config.yaml.example).
+
+## Convention
+
+- Branch: `<type>/<KEY>-<slug>`, e.g. `feat/SECO-1234-add-auth`.
+- Commit: the key is appended as a suffix, e.g. `feat: add auth (SECO-1234)`.
+  Override with `git config traceability.keyPlacement prefix|footer` and
+  `git config traceability.keyPattern '<regex>'`.
+
+## Enforce
+
+Require the validation checks in branch protection (GitHub), merge-request
+approvals (GitLab), or required builds (Bitbucket). CI is the gate; the hook is
+convenience.
+
+## Extending
+
+Add a tracker: a module in `tools/trackers/` subclassing `Tracker`, registered
+in `tools/trackers/__init__.py`. Add a host: a module in `tools/hosts/` that
+returns a `PRContext`, registered in `tools/hosts/__init__.py`.
+
+## Layout
 
 ```text
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│   Developer │────▶│  Git Hooks   │────▶│   GitHub    │
-│   Commits   │     │  Auto-inject │     │     Repo    │
-└─────────────┘     └──────────────┘     └──────┬──────┘
-                                                │
-                                                ▼
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│    Jira     │◀────│GitHub Actions│◀────│  Pull       │
-│    Issue    │     │  Validation  │     │  Request    │
-└─────────────┘     │  & Sync      │     └─────────────┘
-                    └──────────────┘
+.githooks/                 prepare-commit-msg, commit-msg
+.github/workflows/         traceability.yml, metrics.yml (reusable), ci.yml
+ci/gitlab/, ci/bitbucket/  host CI templates
+examples/                  GitHub caller workflows
+scripts/install-hooks.sh   sets core.hooksPath
+tools/sync.py              change -> tracker entry point
+tools/metrics.py           coverage report
+tools/hosts/               base + github, gitlab, bitbucket
+tools/trackers/            base + jira, github, linear, youtrack, azure, trello
 ```
 
-## Validation Rules
+## License
 
-### Branch Names
-
-- Must contain: `[A-Z]{2,10}-[0-9]+`
-- Valid: `feature/SECO-123`, `DEVOPS-45-fix`
-- Invalid: `feature/new-login`, `main`
-
-### Commit Message Format
-
-- Must start with: `[PROJECT-ID]`
-- Valid: `[SECO-123] Add feature`
-- Invalid: `Add feature`
-
-### CI Checks
-
-- **Branch validation**: On push and PR
-- **Commit validation**: On PR only
-- **Jira sync**: On PR events
-
-## Troubleshooting
-
-### Common Issues
-
-#### Hooks not working
-
-```bash
-git config core.hooksPath  # Should output: .githooks
-./scripts/install-hooks.sh  # Reinstall
-```
-
-#### Jira sync failures
-
-- Check Actions logs for specific errors
-- Verify API token permissions
-- Ensure issue exists and is accessible
-
-#### Transition not available
-
-- Issue may be in wrong status
-- Check workflow configuration in Jira
-- Use numeric IDs instead of names
-
-### Debug Commands
-
-Test Jira connectivity:
-
-```bash
-curl -u email:token \
-  https://our-jira.atlassian.net/rest/api/3/myself
-```
-
-Verify issue access:
-
-```bash
-curl -u email:token \
-  https://our-jira.atlassian.net/rest/api/3/issue/SECO-1234
-```
-
-## Security Considerations
-
-- API tokens stored in GitHub Secrets (encrypted)
-- Minimal Jira permissions required (read/write issues)
-- No sensitive data in repository
-- Actions run in isolated environments
-
-## Support Matrix
-
-| Component        | Version |
-| ---------------- | ------- |
-| Git              | 2.30+   |
-| GitHub Actions   | Latest  |
-| Python           | 3.10+   |
-| Jira Cloud       | Latest  |
-| Jira Data Center | 8.0+    |
-
-## Contributing
-
-See [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) for detailed setup instructions.
+MIT. See [LICENSE](LICENSE). Setup: [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md).

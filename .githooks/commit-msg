@@ -1,26 +1,25 @@
 #!/usr/bin/env bash
-# Validate that commit messages contain a Jira issue key
-# This is a safety net in case prepare-commit-msg fails
-
+# Validate that the commit references an issue key. Placement-agnostic: works
+# with the suffix, prefix, or footer style. Safety net for prepare-commit-msg.
 set -euo pipefail
 
 MSG_FILE="$1"
-FIRST_LINE="$(head -n1 "${MSG_FILE}")"
+KEY_RE="$(git config --get traceability.keyPattern || echo '[A-Z][A-Z0-9]{1,9}-[0-9]+')"
 
-# Check for Jira key pattern at the start of the message
-if [[ ! "${FIRST_LINE}" =~ ^\[[A-Z][A-Z0-9]{1,9}-[0-9]+\] ]]; then
-    echo "ERROR: Commit message must start with [PROJECT-ID]" >&2
-    echo "Example: [SECO-1234] Your commit message" >&2
-    echo "" >&2
-    echo "Your current branch should contain a Jira issue key." >&2
-    echo "Branch examples: feature/SECO-1234-description, DEVOPS-89-fix" >&2
-    exit 1
+CONTENT="$(grep -vE '^[[:space:]]*#' "$MSG_FILE" || true)"
+
+if ! grep -qE "$KEY_RE" <<<"$CONTENT"; then
+	{
+		echo "ERROR: commit message must reference an issue key (e.g. SECO-1234)."
+		echo "       Name the branch with the key to auto-inject it, or add it yourself."
+		echo "       Default style stays Conventional-Commits valid:"
+		echo "         feat: short summary (SECO-1234)"
+	} >&2
+	exit 1
 fi
 
-# Validate commit message length (optional but recommended)
-MSG_LENGTH="${#FIRST_LINE}"
-if [[ ${MSG_LENGTH} -gt 100 ]]; then
-    echo "WARNING: Commit subject line is ${MSG_LENGTH} characters (recommended: <100)" >&2
+SUBJECT="$(grep -vE '^[[:space:]]*(#|$)' "$MSG_FILE" | head -n1)"
+if [[ ${#SUBJECT} -gt 100 ]]; then
+	echo "WARNING: subject is ${#SUBJECT} chars (recommended < 100)" >&2
 fi
-
 exit 0

@@ -1,129 +1,86 @@
-# Jira-GitHub Traceability Implementation Guide
+# Implementation Guide
 
-## Executive Summary
-
-This guide provides step-by-step instructions for implementing automated Jira-GitHub traceability in your repository. The system enforces that every commit and PR is linked to a Jira issue with zero manual effort from developers.
+Steps to adopt the traceability helper in a repository. The framework runs as
+reusable workflows, so consuming repos hold only a thin caller plus the local
+hook.
 
 ## Prerequisites
 
-- GitHub repository with Actions enabled
-- Jira Cloud or Data Center instance
-- Jira API credentials with issue edit permissions
-- Git 2.30+ (for hooks support)
-- Python 3.10+ on CI runners
+- GitHub repository with Actions enabled.
+- A tracker instance (Jira Cloud or Data Center, GitHub Issues, Linear,
+  YouTrack, or Azure Boards) and an API credential with issue read/write.
+- Git 2.30+ for hooks; Python 3.10+ on CI runners (provided by the workflow).
 
-## Implementation Steps
+## Step 1: Set secrets
 
-### Step 1: Copy Required Files
+Add the selected provider's secrets at the org level (shared across repos) or
+per repo, under Settings > Secrets and variables > Actions. The required set per
+provider is listed in the README. Org-level secrets plus `secrets: inherit` in
+the caller mean a new repo needs no credential setup.
 
-Clone the traceability-helper template and copy these files to your repository:
+## Step 2: Add the caller workflow
 
-```text
-.githooks/
-├── prepare-commit-msg
-└── commit-msg
-
-.github/
-└── workflows/
-    ├── jira-traceability.yml
-    └── metrics-export.yml (optional)
-
-tools/
-├── jira_sync.py
-├── requirements.txt
-└── config.yaml
-
-scripts/
-└── install-hooks.sh
-```
-
-### Step 2: Configure Jira Project Keys
-
-Edit `.github/workflows/jira-traceability.yml` to specify which Jira project keys are valid for your repository:
+Copy `examples/traceability.yml` to `.github/workflows/traceability.yml` and set
+the provider and project keys:
 
 ```yaml
-env:
-  JIRA_PROJECT_KEYS: "SECO,DEVOPS,ACCREQ" # Add project keys here
+jobs:
+  traceability:
+    uses: royzah/traceability-helper/.github/workflows/traceability.yml@v1
+    with:
+      provider: jira
+      project_keys: "SECO,DEVOPS"
+    secrets: inherit
 ```
 
-### Step 3: Set Repository Secrets
+Pin `@v1` to a released tag. Bump the tag across repos to roll out changes.
 
-Navigate to **Settings → Secrets and variables → Actions** and add:
+## Step 3: Enable the hook
 
-| Secret Name                 | Description                     | Example                    |
-| --------------------------- | ------------------------------- | -------------------------- |
-| `JIRA_BASE_URL`             | Your Jira instance URL          | `https://jira.company.com` |
-| `JIRA_USER_EMAIL`           | Email for API authentication    | `bot@company.com`          |
-| `JIRA_API_TOKEN`            | API token (Cloud) or PAT (DC)   | `ATATT3xFfG...`            |
-| `JIRA_TRANSITION_IN_REVIEW` | Transition name/ID for PR open  | `In Review` or `21`        |
-| `JIRA_TRANSITION_DONE`      | Transition name/ID for PR merge | `Done` or `31`             |
+Document this one-time command in the consuming repo (CONTRIBUTING or
+onboarding); Git will not auto-run hooks from a clone:
 
-### Step 4: Enable Branch Protection
-
-Go to **Settings → Branches** and add a branch protection rule for `main`:
-
-- **Required status checks**: Enable `validate-branch-name` and `validate-commits`
-- **Require branches to be up to date**: Recommended
-- **Include administrators**: Recommended for consistency
-
-### Step 5: Install Hooks for Developers
-
-Add this to your repository README:
-
-```markdown
-## Setup for Developers
-
-Run once after cloning:
+```sh
 ./scripts/install-hooks.sh
-
-This enables automatic Jira ID injection in commits based on your branch name.
 ```
 
-## Workflow Rules
+The hook appends the key from the branch name to each commit subject. Placement
+and pattern are configurable:
 
-### Branch Naming Convention
+```sh
+git config traceability.keyPlacement suffix   # or prefix, footer
+git config traceability.keyPattern '[A-Z][A-Z0-9]{1,9}-[0-9]+'
+```
 
-Branches must include a valid Jira key:
+## Step 4: Protect the branch
 
-- ✓ `feature/SECO-1234-add-auth`
-- ✓ `hotfix/DEVOPS-89-fix-pipeline`
-- ✓ `ACCREQ-456-refactor`
-- ✗ `feature/new-login` (missing Jira key)
+Under Settings > Branches, require these status checks on the default branch:
 
-### Commit Messages
+- `Validate branch name`
+- `Validate commit messages`
 
-Commits must start with `[PROJECT-ID]`:
+CI is the enforcement boundary; the hook only saves manual typing.
 
-- ✓ `[SECO-1234] Add authentication module`
-- ✓ `[DEVOPS-89] Fix: pipeline timeout issue`
-- ✗ `Add new feature` (missing Jira reference)
+## Step 5: Verify
 
-The git hook automatically adds this prefix from your branch name.
+1. Create a branch named with a key, e.g. `feat/SECO-1234-thing`.
+2. Commit and confirm the key is appended: `feat: thing (SECO-1234)`.
+3. Open a PR and confirm the validation checks pass.
+4. Confirm the tracker issue shows the PR link and a comment.
+5. Merge and confirm the issue transitions to done.
 
-## Verification Checklist
+## Optional: coverage metrics
 
-After implementation, verify:
-
-1. Create a branch with pattern `PROJECT-####-description`
-2. Make a commit (verify `[PROJECT-####]` is auto-added)
-3. Open a PR (verify CI checks pass)
-4. Check Jira issue has PR link added
-5. Merge PR and verify Jira transitions to Done
+Copy `examples/metrics.yml` to schedule a weekly report of the share of merged
+PRs that reference a key. Output is uploaded as an artifact and written to the
+run summary.
 
 ## Troubleshooting
 
-### Issue: Hooks not working
-
-- Ensure `scripts/install-hooks.sh` was executed
-- Verify with: `git config core.hooksPath` (should show `.githooks`)
-
-### Issue: Jira sync failing
-
-- Check Actions logs for specific errors
-- Verify API token has correct permissions
-- Ensure Jira project key exists and is accessible
-
-### Issue: Transition not working
-
-- Run `GET /rest/api/3/issue/{issueKey}/transitions` to find valid transition IDs
-- Use numeric IDs instead of names for reliability
+- Hook inactive: confirm `git config core.hooksPath` returns `.githooks`.
+- Sync failures: check the Actions log; verify the credential has issue edit
+  permission and the issue key exists.
+- Transition skipped: the transition name or id must match the tracker
+  workflow; numeric ids are more reliable for Jira.
+- Wrong key shape: set `key_pattern` in the caller (GitHub uses `#123`, Azure
+  uses `AB#123`).

@@ -1,52 +1,46 @@
 #!/usr/bin/env bash
-# Automatically inject [PROJECT-ID] into commit messages based on branch name
-# Supports multiple Jira projects dynamically
-
+# Inject the issue key from the branch name into the commit message.
+#
+# Default placement is a "(KEY)" suffix on the subject, which keeps
+# Conventional Commits subjects valid. Override per repo:
+#   git config traceability.keyPlacement suffix|prefix|footer
+#   git config traceability.keyPattern '<regex>'   # default below
 set -euo pipefail
 
 MSG_FILE="$1"
 COMMIT_SOURCE="${2:-}"
-SHA="${3:-}"
 
-# Skip during merge/rebase operations
-if [[ "${COMMIT_SOURCE}" == "merge" ]] || [[ "${COMMIT_SOURCE}" == "squash" ]]; then
-    exit 0
+case "$COMMIT_SOURCE" in
+merge | squash) exit 0 ;;
+esac
+
+BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+[[ -n "$BRANCH" ]] || exit 0
+
+KEY_RE="$(git config --get traceability.keyPattern || echo '[A-Z][A-Z0-9]{1,9}-[0-9]+')"
+[[ "$BRANCH" =~ ($KEY_RE) ]] || exit 0
+KEY="${BASH_REMATCH[1]}"
+
+# Already referenced anywhere in the message: leave it untouched.
+if grep -qE "$KEY" "$MSG_FILE"; then
+	exit 0
 fi
 
-# Get current branch name
-BRANCH_NAME="$(git symbolic-ref --short HEAD 2>/dev/null || true)"
+PLACEMENT="$(git config --get traceability.keyPlacement || echo suffix)"
 
-if [[ -z "${BRANCH_NAME}" ]]; then
-    exit 0
+if [[ "$PLACEMENT" == "footer" ]]; then
+	git interpret-trailers --trailer "Refs: ${KEY}" --in-place "$MSG_FILE"
+	exit 0
 fi
 
-# Extract any Jira-like project key from branch name
-# Matches any uppercase letters followed by dash and numbers
-if [[ "${BRANCH_NAME}" =~ ([A-Z][A-Z0-9]{1,9}-[0-9]+) ]]; then
-    ISSUE_KEY="${BASH_REMATCH[1]}"
+# Subject is the first non-empty, non-comment line.
+SUBJECT_LINE="$(grep -nvE '^[[:space:]]*(#|$)' "$MSG_FILE" | head -n1 | cut -d: -f1 || true)"
+[[ -n "$SUBJECT_LINE" ]] || exit 0
+
+TMP="$(mktemp)"
+if [[ "$PLACEMENT" == "prefix" ]]; then
+	awk -v n="$SUBJECT_LINE" -v k="$KEY" 'NR==n{$0="["k"] "$0} {print}' "$MSG_FILE" >"$TMP"
 else
-    exit 0
+	awk -v n="$SUBJECT_LINE" -v k="$KEY" 'NR==n{$0=$0" ("k")"} {print}' "$MSG_FILE" >"$TMP"
 fi
-
-# Read the first line of the commit message
-FIRST_LINE="$(head -n1 "${MSG_FILE}")"
-
-# Check if message already contains this issue key
-if [[ "${FIRST_LINE}" =~ ^\[${ISSUE_KEY}\] ]]; then
-    exit 0
-fi
-
-# Check if message already contains any issue key
-if [[ "${FIRST_LINE}" =~ ^\[[A-Z][A-Z0-9]{1,9}-[0-9]+\] ]]; then
-    # Different key already present, respect it
-    exit 0
-fi
-
-# Inject the issue key
-TEMP_FILE="$(mktemp)"
-{
-    echo "[${ISSUE_KEY}] ${FIRST_LINE}"
-    tail -n +2 "${MSG_FILE}" 2>/dev/null || true
-} > "${TEMP_FILE}"
-
-mv "${TEMP_FILE}" "${MSG_FILE}"
+mv "$TMP" "$MSG_FILE"

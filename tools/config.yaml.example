@@ -1,67 +1,43 @@
-# Jira-GitHub Integration Configuration
-# This file is for local development/testing only
-# Production values should be set in GitHub Secrets
+# Reference of the environment variables each provider reads.
+# Production values are GitHub Secrets (see README); this file only documents
+# them. The sync tool is configured entirely through the environment.
+
+common:
+  TRACKER_PROVIDER: jira          # jira | github | linear | youtrack | azure
+  PROJECT_KEYS: "SECO,DEVOPS"     # PROJ-123 trackers; optional allowlist
+  KEY_PATTERN: ""                 # override the key regex if needed
+  SKIP_DRAFT_PRS: "false"
+  # Optional generic transition targets (providers fall back to these):
+  TRACKER_STATE_IN_REVIEW: ""
+  TRACKER_STATE_DONE: ""
 
 jira:
-  # Your Jira instance URL
-  base_url: "https://your-company.atlassian.net"
+  JIRA_BASE_URL: "https://example-org.atlassian.net"
+  JIRA_USER_EMAIL: "automation@example-org.com"   # omit for bearer auth
+  JIRA_API_TOKEN: "***"
+  JIRA_API_VERSION: "3"            # 3 = Cloud, 2 = Data Center
+  JIRA_AUTH: "basic"               # basic | bearer (PAT on Data Center)
+  JIRA_TRANSITION_IN_REVIEW: "In Review"
+  JIRA_TRANSITION_DONE: "Done"
 
-  # Authentication credentials
-  user_email: "automation@company.com"
-  api_token: "CHANGE_ME" # Get from: https://id.atlassian.com/manage/api-tokens
+github:
+  # GITHUB_TOKEN is injected by Actions; no secret needed.
+  GITHUB_LABEL_IN_REVIEW: ""       # optional label applied on open
 
-  # Valid project keys for this repository
-  # Add/remove based on your needs
-  project_keys:
-    - SECO
-    - DEVOPS
-    - ACCREQ
-    - ATRC
-    - DOH
-    - DTHREAT
-    - FMO
-    - KMS
-    - PKVM
-    - PTAD
-    - RTA
-    - SEC
-    - LABS
-    - SYSTESTAD
+linear:
+  LINEAR_API_KEY: "***"
+  LINEAR_STATE_IN_REVIEW: "In Review"
+  LINEAR_STATE_DONE: "Done"
 
-transitions:
-  # Jira workflow transitions (use names or IDs)
-  # Find IDs via: GET /rest/api/3/issue/{issueKey}/transitions
+youtrack:
+  YOUTRACK_BASE_URL: "https://example-org.youtrack.cloud"
+  YOUTRACK_TOKEN: "***"
+  YOUTRACK_STATE_IN_REVIEW: "In Review"
+  YOUTRACK_STATE_DONE: "Done"
 
-  # Transition when PR is opened/ready for review
-  in_review:
-    name: "In Review"
-    id: 21 # Optional: use ID for better reliability
-
-  # Transition when PR is merged
-  done:
-    name: "Done"
-    id: 31
-
-  # Additional transitions (optional)
-  in_progress:
-    name: "In Progress"
-    id: 11
-
-  blocked:
-    name: "Blocked"
-    id: 41
-
-# Advanced settings
-settings:
-  # Skip sync for draft PRs
-  skip_draft_prs: false
-
-  # Add labels to PR based on Jira issue type
-  add_pr_labels: true
-
-  # Comment format
-  comment_format: "simple" # Options: simple, detailed, markdown
-
-  # Retry configuration
-  max_retries: 3
-  retry_delay: 2 # seconds
+azure:
+  AZURE_ORG_URL: "https://dev.azure.com/example-org"
+  AZURE_PROJECT: "example-project"
+  AZURE_PAT: "***"
+  AZURE_STATE_IN_REVIEW: "Active"
+  AZURE_STATE_DONE: "Closed"

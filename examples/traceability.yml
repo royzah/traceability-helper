@@ -1,0 +1,17 @@
+# Copy to .github/workflows/traceability.yml in a consuming repo.
+# Pin @v1 to a released tag of the helper. secrets: inherit passes the
+# tracker credentials configured at the org or repo level.
+name: Traceability
+
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened, closed, ready_for_review, edited]
+
+jobs:
+  traceability:
+    uses: royzah/traceability-helper/.github/workflows/traceability.yml@v1
+    with:
+      provider: jira
+      project_keys: "SECO,DEVOPS"
+    secrets: inherit

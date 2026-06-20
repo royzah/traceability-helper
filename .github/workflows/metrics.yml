@@ -1,0 +1,59 @@
+name: Traceability metrics
+
+# Reusable workflow. Reports the share of merged PRs that reference an issue
+# key. Callers schedule it (see examples/metrics.yml).
+on:
+  workflow_call:
+    inputs:
+      key_pattern:
+        type: string
+        default: ""
+      days_back:
+        type: string
+        default: "30"
+      python_version:
+        type: string
+        default: "3.11"
+
+jobs:
+  metrics:
+    name: Coverage
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Resolve helper repo
+        id: helper
+        run: echo "repo=${GITHUB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.helper.outputs.repo }}
+          ref: ${{ github.job_workflow_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r tools/requirements.txt
+      - name: Collect coverage
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          KEY_PATTERN: ${{ inputs.key_pattern }}
+          DAYS_BACK: ${{ inputs.days_back }}
+        run: python tools/metrics.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: traceability-metrics-${{ github.run_id }}
+          path: metrics/*
+          retention-days: 90
+      - name: Summary
+        if: always()
+        run: |
+          if [[ -f metrics/summary.json ]]; then
+            {
+              echo '## Traceability coverage'
+              echo '```json'
+              cat metrics/summary.json
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

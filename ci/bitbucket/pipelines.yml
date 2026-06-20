@@ -1,0 +1,47 @@
+# Bitbucket Pipelines template. Merge into bitbucket-pipelines.yml.
+#
+# Set these as repository variables (Repository settings > Variables), secured:
+#   TRACKER_PROVIDER, PROJECT_KEYS, and the selected provider's secrets.
+# Provider secrets are read straight from the step environment.
+
+image: python:3.11-slim
+
+definitions:
+  steps:
+    - step: &traceability
+        name: Traceability
+        script:
+          - apt-get update -qq && apt-get install -y -qq git >/dev/null
+          - git clone --depth 1 --branch "${HELPER_REF:-v1}"
+            https://github.com/royzah/traceability-helper.git /opt/helper
+          - pip install --no-cache-dir -r /opt/helper/tools/requirements.txt
+          - export CI_HOST=bitbucket
+          - python /opt/helper/tools/sync.py
+
+pipelines:
+  pull-requests:
+    "**":
+      - step:
+          <<: *traceability
+          name: Traceability (review)
+          script:
+            - export TRACKER_EVENT=opened
+            - apt-get update -qq && apt-get install -y -qq git >/dev/null
+            - git clone --depth 1 --branch "${HELPER_REF:-v1}"
+              https://github.com/royzah/traceability-helper.git /opt/helper
+            - pip install --no-cache-dir -r /opt/helper/tools/requirements.txt
+            - export CI_HOST=bitbucket
+            - python /opt/helper/tools/sync.py
+  branches:
+    main:
+      - step:
+          <<: *traceability
+          name: Traceability (merged)
+          script:
+            - export TRACKER_EVENT=merged
+            - apt-get update -qq && apt-get install -y -qq git >/dev/null
+            - git clone --depth 1 --branch "${HELPER_REF:-v1}"
+              https://github.com/royzah/traceability-helper.git /opt/helper
+            - pip install --no-cache-dir -r /opt/helper/tools/requirements.txt
+            - export CI_HOST=bitbucket
+            - python /opt/helper/tools/sync.py

@@ -1,0 +1,155 @@
+name: Traceability
+
+# Reusable workflow. Callers add a thin wrapper (see examples/traceability.yml)
+# and pass their provider + project keys; secrets are inherited.
+on:
+  workflow_call:
+    inputs:
+      provider:
+        description: "Tracker: jira | github | linear | youtrack | azure"
+        type: string
+        default: "jira"
+      project_keys:
+        description: "Comma-separated valid project keys (PROJ-123 trackers)"
+        type: string
+        default: ""
+      key_pattern:
+        description: "Override the issue-key regex"
+        type: string
+        default: ""
+      python_version:
+        type: string
+        default: "3.11"
+      enforce_commits:
+        description: "Fail the PR if any commit lacks a key"
+        type: boolean
+        default: true
+      skip_draft_prs:
+        description: "Skip comments and transitions on draft PRs"
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  validate-branch:
+    name: Validate branch name
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'push' &&
+       github.ref_name != 'main' &&
+       github.ref_name != 'master' &&
+       github.ref_name != 'develop')
+    env:
+      PROJECT_KEYS: ${{ inputs.project_keys }}
+      KEY_PATTERN: ${{ inputs.key_pattern }}
+    steps:
+      - name: Check branch contains an issue key
+        run: |
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}"
+          PATTERN="${KEY_PATTERN:-[A-Z][A-Z0-9]{1,9}-[0-9]+}"
+          echo "branch: ${BRANCH}"
+          if [[ ! "${BRANCH}" =~ ${PATTERN} ]]; then
+            echo "::error title=Branch name::missing issue key (pattern: ${PATTERN})"
+            exit 1
+          fi
+          if [[ -n "${PROJECT_KEYS}" && "${BRANCH}" =~ ([A-Z][A-Z0-9]{1,9})-[0-9]+ ]]; then
+            PROJ="${BASH_REMATCH[1]}"
+            if [[ ! ",${PROJECT_KEYS}," == *",${PROJ},"* ]]; then
+              echo "::error title=Project key::'${PROJ}' not in: ${PROJECT_KEYS}"
+              exit 1
+            fi
+          fi
+          echo "ok"
+
+  validate-commits:
+    name: Validate commit messages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request' && inputs.enforce_commits
+    env:
+      KEY_PATTERN: ${{ inputs.key_pattern }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check every commit references a key
+        run: |
+          PATTERN="${KEY_PATTERN:-[A-Z][A-Z0-9]{1,9}-[0-9]+}"
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          BAD=""
+          for sha in $(git rev-list "${BASE}..${HEAD}"); do
+            if ! git log -1 --format='%B' "${sha}" | grep -qE "${PATTERN}"; then
+              BAD="${BAD} ${sha:0:7}"
+            fi
+          done
+          if [[ -n "${BAD}" ]]; then
+            echo "::error title=Commit messages::missing key in:${BAD}"
+            exit 1
+          fi
+          echo "ok"
+
+  sync:
+    name: Sync with tracker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >
+      github.event_name == 'pull_request' &&
+      contains(fromJSON('["opened","reopened","ready_for_review","synchronize","closed"]'),
+               github.event.action)
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Resolve helper repo
+        id: helper
+        run: echo "repo=${GITHUB_WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.helper.outputs.repo }}
+          ref: ${{ github.job_workflow_sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r tools/requirements.txt
+      - name: Sync
+        env:
+          TRACKER_PROVIDER: ${{ inputs.provider }}
+          PROJECT_KEYS: ${{ inputs.project_keys }}
+          KEY_PATTERN: ${{ inputs.key_pattern }}
+          SKIP_DRAFT_PRS: ${{ inputs.skip_draft_prs }}
+          GITHUB_TOKEN: ${{ github.token }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_API_VERSION: ${{ secrets.JIRA_API_VERSION }}
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+          JIRA_TRANSITION_IN_REVIEW: ${{ secrets.JIRA_TRANSITION_IN_REVIEW }}
+          JIRA_TRANSITION_DONE: ${{ secrets.JIRA_TRANSITION_DONE }}
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_STATE_IN_REVIEW: ${{ secrets.LINEAR_STATE_IN_REVIEW }}
+          LINEAR_STATE_DONE: ${{ secrets.LINEAR_STATE_DONE }}
+          YOUTRACK_BASE_URL: ${{ secrets.YOUTRACK_BASE_URL }}
+          YOUTRACK_TOKEN: ${{ secrets.YOUTRACK_TOKEN }}
+          YOUTRACK_STATE_IN_REVIEW: ${{ secrets.YOUTRACK_STATE_IN_REVIEW }}
+          YOUTRACK_STATE_DONE: ${{ secrets.YOUTRACK_STATE_DONE }}
+          AZURE_ORG_URL: ${{ secrets.AZURE_ORG_URL }}
+          AZURE_PROJECT: ${{ secrets.AZURE_PROJECT }}
+          AZURE_PAT: ${{ secrets.AZURE_PAT }}
+          AZURE_STATE_IN_REVIEW: ${{ secrets.AZURE_STATE_IN_REVIEW }}
+          AZURE_STATE_DONE: ${{ secrets.AZURE_STATE_DONE }}
+          TRELLO_KEY: ${{ secrets.TRELLO_KEY }}
+          TRELLO_TOKEN: ${{ secrets.TRELLO_TOKEN }}
+          TRELLO_LIST_IN_REVIEW: ${{ secrets.TRELLO_LIST_IN_REVIEW }}
+          TRELLO_LIST_DONE: ${{ secrets.TRELLO_LIST_DONE }}
+          GITHUB_LABEL_IN_REVIEW: ${{ secrets.GITHUB_LABEL_IN_REVIEW }}
+        run: python tools/sync.py

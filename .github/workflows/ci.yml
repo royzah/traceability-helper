@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install linters
+        run: pip install --no-cache-dir ruff flake8 black isort yamllint
+      - name: Ruff
+        run: ruff check tools tests && ruff format --check tools tests
+      - name: Flake8
+        run: flake8 tools tests
+      - name: Black and isort
+        run: black --check tools tests && isort --check tools tests
+      - name: Yamllint
+        run: yamllint .
+      - name: Shellcheck
+        run: shellcheck .githooks/* scripts/*.sh
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install --no-cache-dir -r tools/requirements.txt pytest
+      - name: Pytest
+        run: pytest -q
