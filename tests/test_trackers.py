@@ -110,10 +110,25 @@ def test_github_extract_branch_and_hash(monkeypatch):
     assert t.extract_keys("123-fix", "see #45", "") == ["123", "45"]
 
 
-def test_github_transition_done_closes(monkeypatch):
+def test_github_transition_closes_keyword_ref(monkeypatch):
     t = github(monkeypatch)
     t.session.patch.return_value = Resp(200)
+    t.extract_keys("feat/12-x", "fixes #45, see #99", "")
+    # Closing keyword -> closed.
     assert t.transition("45", "done") is True
+    assert t.session.patch.call_args[1]["json"] == {"state": "closed"}
+    # Only mentioned -> left open.
+    t.session.patch.reset_mock()
+    assert t.transition("99", "done") is True
+    t.session.patch.assert_not_called()
+
+
+def test_github_transition_closes_branch_issue(monkeypatch):
+    t = github(monkeypatch)
+    t.session.patch.return_value = Resp(200)
+    # No closing keyword: fall back to the branch's issue.
+    t.extract_keys("12-fix", "no keyword here", "")
+    assert t.transition("12", "done") is True
     assert t.session.patch.call_args[1]["json"] == {"state": "closed"}
 
 
@@ -142,6 +157,15 @@ def test_linear_issue_exists(monkeypatch):
         {"data": {"issueSearch": {"nodes": [{"id": "uuid", "identifier": "ENG-1"}]}}},
     )
     assert t.issue_exists("ENG-1") is True
+
+
+def test_linear_query_degrades_on_bad_response(monkeypatch):
+    t = linear(monkeypatch)
+    t.session.post.return_value = MagicMock(
+        json=MagicMock(side_effect=ValueError("not json"))
+    )
+    # A non-JSON 5xx must not crash; issue_exists just reports False.
+    assert t.issue_exists("ENG-1") is False
 
 
 def test_linear_comment(monkeypatch):

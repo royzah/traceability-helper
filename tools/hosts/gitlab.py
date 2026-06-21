@@ -6,7 +6,7 @@ import os
 
 from trackers.base import PRContext
 
-from .base import event_override
+from .base import resolve_event
 
 
 def load() -> PRContext | None:
@@ -27,10 +27,7 @@ def load() -> PRContext | None:
         f"{project_url}/-/merge_requests/{iid}" if iid and project_url else project_url
     )
 
-    action, merged = "opened", False
-    override = event_override(action, merged)
-    if override:
-        action, merged = override
+    action, merged = resolve_event("opened", False)
 
     return PRContext(
         number=int(iid) if iid.isdigit() else 0,

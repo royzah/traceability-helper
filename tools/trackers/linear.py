@@ -30,12 +30,17 @@ class LinearTracker(Tracker):
         self._cache: dict = {}
 
     def _query(self, query: str, variables: dict) -> dict:
-        resp = self.session.post(
-            ENDPOINT,
-            json={"query": query, "variables": variables},
-            timeout=self.timeout,
-        )
-        data = resp.json()
+        try:
+            resp = self.session.post(
+                ENDPOINT,
+                json={"query": query, "variables": variables},
+                timeout=self.timeout,
+            )
+            data = resp.json()
+        except Exception as exc:
+            # Non-JSON/5xx: degrade rather than crash the whole run.
+            logger.error("linear request failed: %s", exc)
+            return {}
         if data.get("errors"):
             logger.warning("linear error: %s", data["errors"])
         return data.get("data", {}) or {}

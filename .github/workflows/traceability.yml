@@ -102,7 +102,7 @@ jobs:
     timeout-minutes: 10
     if: >
       github.event_name == 'pull_request' &&
-      contains(fromJSON('["opened","reopened","ready_for_review","synchronize","closed"]'),
+      contains(fromJSON('["opened","reopened","ready_for_review","synchronize","closed","edited"]'),
                github.event.action)
     permissions:
       contents: read

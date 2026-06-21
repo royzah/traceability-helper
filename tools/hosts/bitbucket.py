@@ -6,28 +6,27 @@ import os
 
 from trackers.base import PRContext
 
-from .base import event_override
+from .base import commit_message, resolve_event
 
 
 def load() -> PRContext | None:
     pr_id = os.environ.get("BITBUCKET_PR_ID", "")
     repo = os.environ.get("BITBUCKET_REPO_FULL_NAME", "")
     branch = os.environ.get("BITBUCKET_BRANCH", "")
+    sha = os.environ.get("BITBUCKET_COMMIT", "")
     html_url = (
         f"https://bitbucket.org/{repo}/pull-requests/{pr_id}"
         if repo and pr_id
         else f"https://bitbucket.org/{repo}"
     )
 
-    action, merged = "opened", False
-    override = event_override(action, merged)
-    if override:
-        action, merged = override
+    action, merged = resolve_event("opened", False)
 
     return PRContext(
         number=int(pr_id) if pr_id.isdigit() else 0,
         title=os.environ.get("BITBUCKET_PR_TITLE", ""),
-        body="",
+        # On merges the key lives in the merge-commit message, not the env.
+        body=commit_message(sha),
         html_url=html_url,
         state="open",
         merged=merged,
@@ -36,6 +35,6 @@ def load() -> PRContext | None:
         base_ref=os.environ.get("BITBUCKET_PR_DESTINATION_BRANCH", ""),
         repo=repo,
         author=os.environ.get("BITBUCKET_STEP_TRIGGERER_UUID", "unknown"),
-        merge_commit_sha=os.environ.get("BITBUCKET_COMMIT", ""),
+        merge_commit_sha=sha,
         action=action,
     )

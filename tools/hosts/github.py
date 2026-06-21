@@ -8,7 +8,7 @@ import os
 
 from trackers.base import PRContext
 
-from .base import event_override
+from .base import resolve_event
 
 logger = logging.getLogger("traceability")
 
@@ -33,9 +33,7 @@ def load() -> PRContext | None:
     head = pr.get("head", {}) or {}
     action = event.get("action", "")
     merged = bool(pr.get("merged"))
-    override = event_override(action, merged)
-    if override:
-        action, merged = override
+    action, merged = resolve_event(action, merged)
 
     return PRContext(
         number=pr.get("number", 0),

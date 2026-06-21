@@ -31,17 +31,14 @@ class TrelloTracker(Tracker):
         if not self.key or not self.token:
             raise RuntimeError("TRELLO_KEY and TRELLO_TOKEN are required")
         self.session = make_session(headers={"Accept": "application/json"})
+        self._card_rx = re.compile(self.key_pattern)
 
     def extract_keys(self, *texts):
-        rx = re.compile(self.key_pattern)
-        seen, out = set(), []
+        keys = []
         for text in texts:
-            for match in rx.finditer(text or ""):
-                card = match.group(1)
-                if card not in seen:
-                    seen.add(card)
-                    out.append(card)
-        return out
+            for match in self._card_rx.finditer(text or ""):
+                keys.append(match.group(1))
+        return self._ordered_unique(keys)
 
     def _params(self, **extra) -> dict:
         params = {"key": self.key, "token": self.token}

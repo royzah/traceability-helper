@@ -6,11 +6,13 @@ import logging
 import os
 import re
 
-from .base import PRContext, Tracker, make_session
+from .base import BRANCH_NUMBER_RE, PRContext, Tracker, make_session
 
 logger = logging.getLogger("traceability")
 
 API = "api-version=7.0"
+
+AB_RE = re.compile(r"AB#(\d+)")
 
 
 class AzureBoardsTracker(Tracker):
@@ -33,20 +35,16 @@ class AzureBoardsTracker(Tracker):
         )
 
     def extract_keys(self, *texts):
-        seen, out = set(), []
-        rx = re.compile(r"AB#(\d+)")
-        branch_rx = re.compile(r"(?:^|[/_-])(\d+)")
+        keys = []
         for index, text in enumerate(texts):
             if not text:
                 continue
-            found = rx.findall(text)
+            found = AB_RE.findall(text)
             if not found and index == 0:
-                found = branch_rx.findall(text)
-            for num in found:
-                if num not in seen:
-                    seen.add(num)
-                    out.append(num)
-        return out
+                # One work item per branch: only the leading number.
+                found = BRANCH_NUMBER_RE.findall(text)[:1]
+            keys.extend(found)
+        return self._ordered_unique(keys)
 
     def _wit(self, key: str) -> str:
         return f"{self.org}/{self.project}/_apis/wit/workitems/{key}?{API}"

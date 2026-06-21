@@ -24,6 +24,9 @@ logger = logging.getLogger("traceability")
 # providers override this with their own native reference format.
 DEFAULT_KEY_PATTERN = r"[A-Z][A-Z0-9]{1,9}-[0-9]+"
 
+# Leading number in a branch name (feat/123-foo); GitHub/Azure fallback.
+BRANCH_NUMBER_RE = re.compile(r"(?:^|[/_-])(\d+)")
+
 
 @dataclass
 class PRContext:
@@ -94,14 +97,24 @@ class Tracker:
         ]
         self.key_pattern = self.config.get("key_pattern") or self.default_key_pattern
         self.timeout = int(self.config.get("timeout") or 15)
+        self._key_rx = re.compile("(" + self.key_pattern + ")")
 
     # -- key extraction (default: PROJ-123, project-filtered) --------------
 
-    def extract_keys(self, *texts: str) -> list[str]:
-        rx = re.compile("(" + self.key_pattern + ")")
+    @staticmethod
+    def _ordered_unique(items) -> list[str]:
+        """De-duplicate while preserving first-seen order; drop falsy values."""
         seen, out = set(), []
+        for item in items:
+            if item and item not in seen:
+                seen.add(item)
+                out.append(item)
+        return out
+
+    def extract_keys(self, *texts: str) -> list[str]:
+        keys = []
         for text in texts:
-            for match in rx.finditer(text or ""):
+            for match in self._key_rx.finditer(text or ""):
                 key = match.group(1)
                 if (
                     self.project_keys
@@ -109,10 +122,8 @@ class Tracker:
                     and key.split("-")[0] not in self.project_keys
                 ):
                     continue
-                if key not in seen:
-                    seen.add(key)
-                    out.append(key)
-        return out
+                keys.append(key)
+        return self._ordered_unique(keys)
 
     def state_for(self, target: str) -> str | None:
         return first_env(*self.target_envs.get(target, ()))

@@ -8,9 +8,15 @@ import logging
 import os
 import re
 
-from .base import PRContext, Tracker, make_session
+from .base import BRANCH_NUMBER_RE, PRContext, Tracker, make_session
 
 logger = logging.getLogger("traceability")
+
+# GitHub's auto-close keywords; only these (or the branch issue) may close.
+CLOSING_RE = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*:?\s*#(\d+)", re.IGNORECASE
+)
+HASH_RE = re.compile(r"#(\d+)")
 
 
 class GitHubIssuesTracker(Tracker):
@@ -31,28 +37,37 @@ class GitHubIssuesTracker(Tracker):
             }
         )
         self.repo = os.environ.get("GITHUB_REPOSITORY", "")
+        # Set by extract_keys; gate which issues a merge may close.
+        self._closing: set = set()
+        self._branch: set = set()
 
     def extract_keys(self, *texts):
-        seen, out = set(), []
-        hash_rx = re.compile(r"#(\d+)")
-        branch_rx = re.compile(r"(?:^|[/_-])(\d+)")
+        self._closing = set()
+        self._branch = set()
+        keys = []
         for index, text in enumerate(texts):
             if not text:
                 continue
-            found = hash_rx.findall(text)
+            self._closing.update(CLOSING_RE.findall(text))
+            found = HASH_RE.findall(text)
             if not found and index == 0:
-                found = branch_rx.findall(text)
-            for num in found:
-                if num not in seen:
-                    seen.add(num)
-                    out.append(num)
-        return out
+                # One issue per branch: only the leading number.
+                found = BRANCH_NUMBER_RE.findall(text)[:1]
+                self._branch.update(found)
+            keys.extend(found)
+        return self._ordered_unique(keys)
 
-    def _repo_for(self, pr: PRContext) -> str:
-        return pr.repo or self.repo
+    def _should_close(self, key: str) -> bool:
+        # Closing keyword wins; else the branch issue. Never a bare mention.
+        if key in self._closing:
+            return True
+        return not self._closing and key in self._branch
+
+    def _repo(self) -> str:
+        return self.repo or os.environ.get("GITHUB_REPOSITORY", "")
 
     def issue_exists(self, key: str) -> bool:
-        repo = self.repo or os.environ.get("GITHUB_REPOSITORY", "")
+        repo = self._repo()
         try:
             resp = self.session.get(
                 f"{self.api}/repos/{repo}/issues/{key}", timeout=self.timeout
@@ -67,7 +82,7 @@ class GitHubIssuesTracker(Tracker):
         return True
 
     def comment(self, key: str, text: str) -> bool:
-        repo = self.repo or os.environ.get("GITHUB_REPOSITORY", "")
+        repo = self._repo()
         try:
             resp = self.session.post(
                 f"{self.api}/repos/{repo}/issues/{key}/comments",
@@ -80,9 +95,12 @@ class GitHubIssuesTracker(Tracker):
             return False
 
     def transition(self, key: str, target: str) -> bool:
-        repo = self.repo or os.environ.get("GITHUB_REPOSITORY", "")
+        repo = self._repo()
         try:
             if target == "done":
+                if not self._should_close(key):
+                    logger.info("#%s only mentioned; leaving it open", key)
+                    return True
                 resp = self.session.patch(
                     f"{self.api}/repos/{repo}/issues/{key}",
                     json={"state": "closed"},

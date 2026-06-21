@@ -29,7 +29,7 @@ jobs:
     uses: royzah/traceability-helper/.github/workflows/traceability.yml@v1
     with:
       provider: jira
-      project_keys: "SECO,DEVOPS"
+      project_keys: "PROJ,PLAT"
     secrets: inherit
 ```
 
@@ -52,22 +52,48 @@ git config traceability.keyPlacement suffix   # or prefix, footer
 git config traceability.keyPattern '[A-Z][A-Z0-9]{1,9}-[0-9]+'
 ```
 
-## Step 4: Protect the branch
+## Step 4: Protect the default branch and set the merge strategy
 
-Under Settings > Branches, require these status checks on the default branch:
+Branch protection is the enforcement boundary; the hook only saves manual typing.
 
-- `Validate branch name`
-- `Validate commit messages`
+Merge strategy (Settings > General > Pull Requests):
 
-CI is the enforcement boundary; the hook only saves manual typing.
+- Allow squash merging only. Turn off merge commits and rebase merging.
+- Set the squash commit message to the pull request title. The title carries the
+  key, so the commit on the default branch stays traceable.
+- Enable automatic deletion of head branches.
 
-## Step 5: Verify
+Branch protection rule on the default branch (Settings > Branches):
 
-1. Create a branch named with a key, e.g. `feat/SECO-1234-thing`.
-2. Commit and confirm the key is appended: `feat: thing (SECO-1234)`.
-3. Open a PR and confirm the validation checks pass.
+- Require a pull request before merging, with at least one approval.
+- Dismiss stale approvals when new commits are pushed.
+- Require review from code owners for protected paths (see Step 5).
+- Require status checks to pass and branches to be up to date:
+  - `Lint`
+  - `Test`
+  - `Validate branch name`
+  - `Validate commit messages`
+- Require linear history (pairs with squash) and conversation resolution.
+- Block force pushes and deletions, and apply the rules to administrators.
+
+GitLab and Bitbucket equivalents: protect the default branch, require merge
+request approvals and passing pipelines, enable squash on merge, and require the
+validation job.
+
+## Step 5: Add the PR template and code owners
+
+Copy `.github/pull_request_template.md` into the consuming repo so every PR
+prompts for a keyed title and a structured description. Add a `CODEOWNERS` file
+to route review of sensitive paths (auth, infra, CI) to their owners; pair it
+with the code-owner review rule from Step 4.
+
+## Step 6: Verify
+
+1. Create a branch named with a key, e.g. `feat/PROJ-1234-thing`.
+2. Commit and confirm the key is appended: `feat: thing (PROJ-1234)`.
+3. Open a PR with the key in the title and confirm the validation checks pass.
 4. Confirm the tracker issue shows the PR link and a comment.
-5. Merge and confirm the issue transitions to done.
+5. Squash merge and confirm the issue transitions to done.
 
 ## Optional: coverage metrics
 

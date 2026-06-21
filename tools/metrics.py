@@ -66,7 +66,12 @@ def main() -> int:
             if updated < cutoff:
                 stop = True
                 break
-            if not pr.get("merged_at"):
+            merged_at = pr.get("merged_at")
+            if not merged_at:
+                continue
+            # Count by merge date, not by recent activity.
+            merged = datetime.fromisoformat(merged_at.replace("Z", "+00:00"))
+            if merged < cutoff:
                 continue
             text = " ".join(
                 [
@@ -91,12 +96,14 @@ def main() -> int:
 
     total = len(rows)
     traced = sum(1 for r in rows if r["traced"])
+    # No merged PRs: report null, not a misleading 100%.
+    coverage = round(100 * traced / total, 1) if total else None
     summary = {
         "repo": repo,
         "days_back": days_back,
         "merged_prs": total,
         "traced_prs": traced,
-        "coverage_pct": round(100 * traced / total, 1) if total else 100.0,
+        "coverage_pct": coverage,
     }
 
     out = Path("metrics")
@@ -109,7 +116,10 @@ def main() -> int:
         writer.writeheader()
         writer.writerows(rows)
 
-    logger.info("coverage: %s%% (%s/%s)", summary["coverage_pct"], traced, total)
+    if total:
+        logger.info("coverage: %s%% (%s/%s)", coverage, traced, total)
+    else:
+        logger.info("no merged PRs in the last %s days", days_back)
     return 0
 
 

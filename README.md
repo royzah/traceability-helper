@@ -20,7 +20,7 @@ review and done. Process and conventions: [WORKFLOW.md](WORKFLOW.md).
 
 ```mermaid
 flowchart LR
-  dev[Branch feat/SECO-1234-x] --> hook[prepare-commit-msg adds key]
+  dev[Branch feat/PROJ-1234-x] --> hook[prepare-commit-msg adds key]
   hook --> pr[Pull or merge request]
   pr --> ci[CI: validate + sync]
   ci --> issue[(Tracker issue)]
@@ -62,7 +62,7 @@ Jira supports Cloud (REST v3) and Data Center (REST v2, bearer PAT).
        uses: royzah/traceability-helper/.github/workflows/traceability.yml@v1
        with:
          provider: jira
-         project_keys: "SECO,DEVOPS"
+         project_keys: "PROJ,PLAT"
        secrets: inherit
    ```
 
@@ -123,16 +123,19 @@ Full reference: [tools/config.yaml.example](tools/config.yaml.example).
 
 ## Convention
 
-- Branch: `<type>/<KEY>-<slug>`, e.g. `feat/SECO-1234-add-auth`.
-- Commit: the key is appended as a suffix, e.g. `feat: add auth (SECO-1234)`.
+- Branch: `<type>/<KEY>-<slug>`, e.g. `feat/PROJ-1234-add-auth`.
+- Commit: the key is appended as a suffix, e.g. `feat: add auth (PROJ-1234)`.
   Override with `git config traceability.keyPlacement prefix|footer` and
   `git config traceability.keyPattern '<regex>'`.
+- PR: squash and merge, with the key in the PR title (it becomes the commit on
+  the default branch). Process and roles: [WORKFLOW.md](WORKFLOW.md).
 
 ## Enforce
 
 Require the validation checks in branch protection (GitHub), merge-request
 approvals (GitLab), or required builds (Bitbucket). CI is the gate; the hook is
-convenience.
+convenience. Set squash as the only merge strategy so one ticket maps to one
+traceable commit. Concrete settings: [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md).
 
 ## Extending
 
