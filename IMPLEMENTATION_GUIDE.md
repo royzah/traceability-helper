@@ -73,6 +73,7 @@ Branch protection rule on the default branch (Settings > Branches):
   - `Test`
   - `Validate branch name`
   - `Validate commit messages`
+  - `Validate PR title`
 - Require linear history (pairs with squash) and conversation resolution.
 - Block force pushes and deletions, and apply the rules to administrators.
 

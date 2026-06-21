@@ -13,5 +13,5 @@ jobs:
     uses: royzah/traceability-helper/.github/workflows/traceability.yml@v1
     with:
       provider: jira
-      project_keys: "SECO,DEVOPS"
+      project_keys: "PROJ,PLAT"
     secrets: inherit
