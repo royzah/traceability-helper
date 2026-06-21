@@ -1,14 +1,13 @@
-# Enforcement-only variant (Solution B)
+# Enforcement-only gate
 
-Keeps only what no native integration provides: a hard gate that every change
-carries an issue key. Linking, comments, and transitions are delegated to the
-native host-to-Jira integration. No Python, no secrets.
+A hard gate that every change carries an issue key. Linking, comments, and
+transitions are delegated to the native host-to-Jira integration. No secrets.
 
-## What stays
+## What it is
 
 - The Git hooks (`../.githooks`, key injection) and one CI job that fails a PR
   or MR whose branch and title lack a key.
-- Dropped: `tools/` (sync, trackers, hosts) and the credentialed sync workflow.
+- Coverage stays available via `../tools/metrics.py`.
 
 ## Squash insight
 

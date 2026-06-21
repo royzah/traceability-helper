@@ -16,3 +16,6 @@ class Resp:
 
     def json(self):
         return self._data
+
+    def raise_for_status(self):
+        return None

@@ -100,10 +100,11 @@ flowchart TD
 ## Automated versus manual
 
 Manual, by the developer: branch off `main` with the key, open the PR with a
-keyed title, get review. Automatic, by this tooling: append the key to commits,
-fail CI on a missing key, link the PR to the issue and comment, move the issue to
-In Review on open and Done on merge, report coverage. That asymmetry is the
-design goal: learn one naming convention, and the rest is free.
+keyed title, get review. Automatic: the hook appends the key to commits, CI
+fails on a missing key, and the native integration links the PR to the issue and
+moves it to In Review on open and Done on merge. A scheduled job reports
+coverage. That asymmetry is the design goal: learn one naming convention, and
+the rest is free.
 
 ## Definition of done
 
