@@ -1,0 +1,45 @@
+name: Traceability
+
+# Enforcement-only gate: require an issue key in the branch and PR title.
+# Linking and transitions are left to the native integration (see ../README.md).
+# Copy to .github/workflows/traceability.yml.
+
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  require-key:
+    name: Require issue key
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      KEY_PATTERN: '[A-Z][A-Z0-9]{1,9}-[0-9]+'
+      PROJECT_KEYS: '' # optional CSV allowlist, e.g. PROJ,PLAT
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      BRANCH: ${{ github.head_ref }}
+    steps:
+      - name: Branch name carries a key
+        run: |
+          echo "branch: ${BRANCH}"
+          if [[ ! "${BRANCH}" =~ ${KEY_PATTERN} ]]; then
+            echo "::error title=Branch::missing issue key (pattern: ${KEY_PATTERN})"
+            exit 1
+          fi
+          if [[ -n "${PROJECT_KEYS}" && "${BRANCH}" =~ ([A-Z][A-Z0-9]{1,9})-[0-9]+ ]]; then
+            proj="${BASH_REMATCH[1]}"
+            if [[ ",${PROJECT_KEYS}," != *",${proj},"* ]]; then
+              echo "::error title=Branch::project '${proj}' not in: ${PROJECT_KEYS}"
+              exit 1
+            fi
+          fi
+      - name: PR title carries a key
+        run: |
+          echo "title: ${PR_TITLE}"
+          if [[ ! "${PR_TITLE}" =~ ${KEY_PATTERN} ]]; then
+            echo "::error title=PR title::missing issue key; the title becomes the squash commit"
+            exit 1
+          fi

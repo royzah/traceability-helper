@@ -8,6 +8,9 @@ The issue key is the single thread: a hook injects it from the branch, CI
 enforces it, and a provider links the change to the issue and moves it through
 review and done. Process and conventions: [WORKFLOW.md](WORKFLOW.md).
 
+Two ways to adopt this, the full tool or an enforcement-only gate that defers
+linking to a native integration: [SOLUTIONS.md](SOLUTIONS.md).
+
 ## What it does
 
 - Injects the key into commits from the branch name (Conventional-Commits safe).

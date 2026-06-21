@@ -1,0 +1,18 @@
+# Enforcement-only gate for GitLab: require a key in the branch and MR title.
+# Linking and transitions are left to GitLab's Jira integration (see ../README.md).
+# include: this file from .gitlab-ci.yml.
+
+traceability:require-key:
+  image: alpine:3
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    KEY_PATTERN: '[A-Z][A-Z0-9]{1,9}-[0-9]+'
+  script:
+    - |
+      echo "branch: ${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}"
+      echo "${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}" | grep -Eq "${KEY_PATTERN}" \
+        || { echo "branch is missing an issue key"; exit 1; }
+      echo "title: ${CI_MERGE_REQUEST_TITLE}"
+      echo "${CI_MERGE_REQUEST_TITLE}" | grep -Eq "${KEY_PATTERN}" \
+        || { echo "MR title is missing an issue key"; exit 1; }
