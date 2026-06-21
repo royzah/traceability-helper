@@ -36,3 +36,21 @@ Both support Jira Data Center and both hosts.
 A ships a GitLab host adapter and B ships a GitLab gate, so an on-prem GitLab
 move is covered either way. Details:
 [enforcement-only/README.md](enforcement-only/README.md).
+
+## Before pruning Solution A
+
+Delete the full tool only after a pilot on one real repo confirms the native
+integration covers what A does. Check all of:
+
+- [ ] Native integration installed and authorized (Jira DC DVCS connector for
+      GitHub, or GitLab's Jira integration for GitLab).
+- [ ] A merged PR/MR auto-links to the issue (the development panel shows it).
+- [ ] A merged PR/MR moves the issue to Done automatically, verified on a real
+      ticket (automation rule, or keyword on GitLab).
+- [ ] An opened PR/MR moves the issue to In Review, if that step is wanted.
+- [ ] Only one tracker is in use (no Linear, YouTrack, Azure, or Trello need).
+- [ ] Coverage still comes from `tools/metrics.py`, which the prune keeps.
+- [ ] Branch protection requires the gate check on the default branch.
+
+When every box is ticked, merge the prune branch. Until then, keeping A costs
+almost nothing and stays recoverable.
